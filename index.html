@@ -5504,6 +5504,56 @@ function androidClearlyBreathy(
 
 
 // ============================================================
+// Android Sらしい高域形状
+// ============================================================
+//
+// 口をすぼめた「ふー」は、音量やHigh Ratioが上がると
+// genericなS判定を通ることがある。
+// そこでAndroidでは、Sに多い
+// ・高いスペクトル重心
+// ・6kHz以上
+// ・8kHz以上
+// の集中も確認する。
+// iOSほど厳しくせず、Androidの正しい弱いSを残しやすい値にする。
+
+function androidSShape(
+    result
+) {
+
+    const upperShareOfHigh =
+        result.upperHighRatio
+        /
+        Math.max(
+            result.highRatio,
+            0.001
+        );
+
+
+    const veryHighShareOfHigh =
+        result.veryHighRatio
+        /
+        Math.max(
+            result.highRatio,
+            0.001
+        );
+
+
+    return (
+        result.spectralCentroid >= 4700
+        &&
+        result.upperHighRatio >= 0.18
+        &&
+        result.veryHighRatio >= 0.055
+        &&
+        upperShareOfHigh >= 0.32
+        &&
+        veryHighShareOfHigh >= 0.10
+    );
+
+}
+
+
+// ============================================================
 // Android 弱いS開始
 // ============================================================
 
@@ -5914,6 +5964,19 @@ function holdSAndroid(
         result.zcr
         <
         ANDROID_HOLD_ZCR_MIN
+    ) {
+
+        return false;
+
+    }
+
+
+    // ラッチ後に「ふー」へ移行した場合も、
+    // そのままSとして保持し続けない。
+    if (
+        androidClearlyBreathy(
+            result
+        )
     ) {
 
         return false;
@@ -7158,8 +7221,14 @@ function processResult(
             (
                 !IS_ANDROID
                 ||
-                !androidClearlyBreathy(
-                    result
+                (
+                    !androidClearlyBreathy(
+                        result
+                    )
+                    &&
+                    androidSShape(
+                        result
+                    )
                 )
             );
 
@@ -7182,8 +7251,14 @@ function processResult(
             (
                 !IS_ANDROID
                 ||
-                !androidClearlyBreathy(
-                    result
+                (
+                    !androidClearlyBreathy(
+                        result
+                    )
+                    &&
+                    androidSShape(
+                        result
+                    )
                 )
             );
 
