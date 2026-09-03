@@ -1314,8 +1314,9 @@ const PC_ONSET_EXTRA_FRAMES =
 // 通常のS音量しきい値は変えず、iOSの弱音経路だけ開始音量を下げる。
 // 実際の開始時に 0.0008～0.0009 前後しか届かないケースに対応。
 // 第9世代で、より弱い自然な「すー」にも入りやすくする微調整。
+// もう一段だけ弱い自然な「すー」から開始しやすくする。
 const IOS_WEAK_MIN_VOLUME =
-    0.00070;
+    0.00062;
 
 const IOS_WEAK_REQUIRED =
     12;
@@ -1513,14 +1514,15 @@ const IOS_BREATH_RELEASE_NOISE_ADD =
 // 弱い息への感度をかなり高く保ちつつ、
 // 一瞬の接触音・物音は連続時間とピーク形状で除外する。
 // 「ふーっと！」も弱い呼気で開始しやすくする微調整。
+// もう一段だけ弱い「ふー」から開始しやすくする。
 const IOS_BREATH_MIN_VOLUME =
-    0.00036;
+    0.00032;
 
 const IOS_BREATH_NOISE_MULTIPLIER =
-    1.004;
+    1.003;
 
 const IOS_BREATH_NOISE_ADD =
-    0.000010;
+    0.000008;
 
 const IOS_BREATH_HIGH_RATIO_MIN =
     0.045;
@@ -6171,8 +6173,8 @@ function finishCalibration() {
     iosWeakDynamicMin =
         Math.max(
             IOS_WEAK_MIN_VOLUME,
-            noiseFloor * 1.06,
-            noiseFloor + 0.00025
+            noiseFloor * 1.05,
+            noiseFloor + 0.00020
         );
 
 
