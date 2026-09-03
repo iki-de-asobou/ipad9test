@@ -1524,16 +1524,16 @@ const BREATH_REQUIRED =
 
 // 継続中は開始条件よりさらに緩くする。
 const BREATH_HOLD_MIN_VOLUME =
-    0.00050;
+    0.00035;
 
 const BREATH_HOLD_NOISE_MULTIPLIER =
-    1.010;
+    1.005;
 
 const BREATH_HOLD_NOISE_ADD =
-    0.00002;
+    0.00001;
 
 const BREATH_RELEASE_SECONDS =
-    0.18;
+    0.30;
 
 
 // iPad / iPhone の「ふーっと！」だけ追加調整。
@@ -1542,7 +1542,7 @@ const BREATH_RELEASE_SECONDS =
 // ・息が止まったら早めに終了する
 // ための端末別判定。
 const IOS_BREATH_RELEASE_SECONDS =
-    0.32;
+    0.42;
 
 const IOS_BREATH_REFERENCE_BUILD_SECONDS =
     0.22;
@@ -6790,7 +6790,7 @@ function holdBreathIOS(
     const relativeThreshold =
         breathReferenceVolume
         *
-        0.16;
+        0.12;
 
 
     const noiseThreshold =
@@ -6803,7 +6803,7 @@ function holdBreathIOS(
             +
             IOS_BREATH_RELEASE_NOISE_ADD,
 
-            0.00042
+            0.00034
         );
 
 
