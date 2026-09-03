@@ -5548,16 +5548,42 @@ function androidSShape(
         );
 
 
+    // 摩擦感のある「ふー」は High Ratio 自体は高くなることがあるが、
+    // 正しい /s/ より 6kHz以上・8kHz以上への集中が弱く、
+    // 2〜4kHzや700〜3000Hz側に成分が残りやすい。
+    // V19/V20より少しだけ「高域への集中」を重視する。
+    const upperToLowMid =
+        result.upperHighRatio
+        /
+        Math.max(
+            result.lowMidRatio,
+            0.001
+        );
+
+
+    const veryHighToMid =
+        result.veryHighRatio
+        /
+        Math.max(
+            result.mid24Ratio,
+            0.001
+        );
+
+
     return (
-        result.spectralCentroid >= 4700
+        result.spectralCentroid >= 4800
         &&
-        result.upperHighRatio >= 0.18
+        result.upperHighRatio >= 0.19
         &&
-        result.veryHighRatio >= 0.055
+        result.veryHighRatio >= 0.060
         &&
-        upperShareOfHigh >= 0.32
+        upperShareOfHigh >= 0.33
         &&
-        veryHighShareOfHigh >= 0.10
+        veryHighShareOfHigh >= 0.105
+        &&
+        upperToLowMid >= 0.82
+        &&
+        veryHighToMid >= 0.38
     );
 
 }
