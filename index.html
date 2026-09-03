@@ -1319,8 +1319,9 @@ const PC_ONSET_EXTRA_FRAMES =
 // iPad第9世代：自然な距離で、さらに弱いSでも開始しやすくする追加調整。
 // iPad第9世代：自然な距離で、さらに弱いSから開始しやすくする。
 // iPad第9世代：自然な距離で、さらに弱いSから開始しやすくする。
+// iPad第9世代：自然な距離で、さらに弱いSから開始しやすくする。
 const IOS_WEAK_MIN_VOLUME =
-    0.00032;
+    0.00028;
 
 const IOS_WEAK_REQUIRED =
     12;
@@ -6177,8 +6178,8 @@ function finishCalibration() {
     iosWeakDynamicMin =
         Math.max(
             IOS_WEAK_MIN_VOLUME,
-            noiseFloor * 1.015,
-            noiseFloor + 0.00005
+            noiseFloor * 1.01,
+            noiseFloor + 0.00003
         );
 
 
