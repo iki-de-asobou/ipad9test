@@ -1314,9 +1314,13 @@ const ANDROID_HOLD_HIGH_RATIO_MIN =
 const ANDROID_HOLD_ZCR_MIN =
     0.012;
 
-// 瞬間的に条件を外れても画像がすぐ消えないよう猶予を延長。
+// Sらしい音が一時的に崩れた場合は、従来どおり少し長めに待つ。
 const ANDROID_RELEASE_SECONDS =
     0.60;
+
+// ほぼ無音まで落ちた場合だけ、より早く画像を消す。
+const ANDROID_SILENCE_RELEASE_SECONDS =
+    0.18;
 
 
 // ============================================================
@@ -4358,6 +4362,12 @@ let calibrationFramesNeeded =
 let androidReleaseFramesNeeded =
     17;
 
+let androidSilenceReleaseFramesNeeded =
+    11;
+
+let androidSilenceCount =
+    0;
+
 
 let pcSoftReleaseFramesNeeded =
     30;
@@ -5923,6 +5933,31 @@ function pcOnsetContinuation(
 
 
 // ============================================================
+// Android 無音判定
+// ============================================================
+
+function androidClearlySilent(
+    result
+) {
+
+    const silenceThreshold =
+        Math.max(
+            0.00055,
+            noiseFloor * 1.08,
+            noiseFloor + 0.00008
+        );
+
+
+    return (
+        result.volume
+        <
+        silenceThreshold
+    );
+
+}
+
+
+// ============================================================
 // Android継続
 // ============================================================
 
@@ -6998,6 +7033,10 @@ function latchS(
         0;
 
 
+    androidSilenceCount =
+        0;
+
+
     silenceCount =
         0;
 
@@ -7470,6 +7509,9 @@ function processResult(
             releaseCount =
                 0;
 
+            androidSilenceCount =
+                0;
+
 
             return;
 
@@ -7477,6 +7519,39 @@ function processResult(
 
 
         releaseCount++;
+
+
+        if (
+            androidClearlySilent(
+                result
+            )
+        ) {
+
+            androidSilenceCount++;
+
+        }
+
+        else {
+
+            androidSilenceCount =
+                0;
+
+        }
+
+
+        // 本当に無音へ落ちた場合だけ早く終了する。
+        // 弱いSや一時的な周波数の崩れは、従来の0.60秒猶予を残す。
+        if (
+            androidSilenceCount
+            >=
+            androidSilenceReleaseFramesNeeded
+        ) {
+
+            finishCurrentS();
+
+            return;
+
+        }
 
 
         if (
@@ -8434,6 +8509,20 @@ async function startMicrophone() {
 
                 Math.round(
                     ANDROID_RELEASE_SECONDS
+                    *
+                    audioContext.sampleRate
+                    /
+                    frameSize
+                )
+            );
+
+
+        androidSilenceReleaseFramesNeeded =
+            Math.max(
+                1,
+
+                Math.round(
+                    ANDROID_SILENCE_RELEASE_SECONDS
                     *
                     audioContext.sampleRate
                     /
