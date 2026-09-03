@@ -1276,16 +1276,47 @@ const IS_IOS =
 // Android
 // ============================================================
 
+// ============================================================
+// Android S感度調整
+// ============================================================
+//
+// iOSやPCには影響させず、Androidだけ
+// ・弱いSの開始
+// ・開始後の持続
+// を拾いやすくする。
+
+const ANDROID_WEAK_MIN_VOLUME =
+    0.0020;
+
+const ANDROID_WEAK_NOISE_MULTIPLIER =
+    1.06;
+
+const ANDROID_WEAK_NOISE_ADD =
+    0.00015;
+
+const ANDROID_WEAK_REQUIRED =
+    3;
+
+
 // Android：開始後の弱いSを保持しやすくする。
+const ANDROID_HOLD_MIN_VOLUME =
+    0.0010;
+
+const ANDROID_HOLD_NOISE_MULTIPLIER =
+    1.06;
+
+const ANDROID_HOLD_NOISE_ADD =
+    0.00012;
+
 const ANDROID_HOLD_HIGH_RATIO_MIN =
-    0.28;
+    0.25;
 
 const ANDROID_HOLD_ZCR_MIN =
-    0.015;
+    0.012;
 
-// 瞬間的に条件を外れても画像がすぐ消えないよう少し延長。
+// 瞬間的に条件を外れても画像がすぐ消えないよう猶予を延長。
 const ANDROID_RELEASE_SECONDS =
-    0.45;
+    0.60;
 
 
 // ============================================================
@@ -5406,6 +5437,41 @@ function weakS(
 
 
 // ============================================================
+// Android 弱いS開始
+// ============================================================
+
+function weakSAndroid(
+    result
+) {
+
+    const minimumVolume =
+        Math.max(
+            ANDROID_WEAK_MIN_VOLUME,
+            noiseFloor * ANDROID_WEAK_NOISE_MULTIPLIER,
+            noiseFloor + ANDROID_WEAK_NOISE_ADD
+        );
+
+
+    if (
+        result.volume
+        <
+        minimumVolume
+    ) {
+
+        return false;
+
+    }
+
+
+    // 音量だけを下げ、Sらしさの基本条件は維持する。
+    return commonSFeatures(
+        result
+    );
+
+}
+
+
+// ============================================================
 // iPad 「ふー」らしい息だけを除外
 // ============================================================
 
@@ -5749,9 +5815,9 @@ function holdSAndroid(
 
     const minimumVolume =
         Math.max(
-            0.0016,
-            noiseFloor * 1.12,
-            noiseFloor + 0.00025
+            ANDROID_HOLD_MIN_VOLUME,
+            noiseFloor * ANDROID_HOLD_NOISE_MULTIPLIER,
+            noiseFloor + ANDROID_HOLD_NOISE_ADD
         );
 
 
@@ -7024,8 +7090,16 @@ function processResult(
 
 
         const weakCandidate =
-            weakS(
-                result
+            (
+                IS_ANDROID
+                ?
+                weakSAndroid(
+                    result
+                )
+                :
+                weakS(
+                    result
+                )
             )
             &&
             iosShapeOK;
@@ -7164,7 +7238,13 @@ function processResult(
                 ?
                 IOS_WEAK_REQUIRED
                 :
-                WEAK_REQUIRED
+                (
+                    IS_ANDROID
+                    ?
+                    ANDROID_WEAK_REQUIRED
+                    :
+                    WEAK_REQUIRED
+                )
             );
 
 
