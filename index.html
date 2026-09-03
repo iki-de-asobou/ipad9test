@@ -1401,8 +1401,9 @@ const IOS_RELEASE_NOISE_ADD =
 const IOS_RELEASE_SECONDS =
     0.20;
 
+// 弱いSで一瞬だけ周波数条件が崩れても、すぐには画像を消さない。
 const IOS_SPECTRAL_RELEASE_SECONDS =
-    0.40;
+    0.55;
 
 const IOS_INITIAL_PROTECTION_SECONDS =
     0.30;
@@ -1417,14 +1418,16 @@ const IOS_INITIAL_PROTECTION_SECONDS =
 // そのため、最初に通常のS判定を満たしたことを確認した後だけ、
 // 非常にSらしい高域形状が続く間は低音量でも候補・継続を許可する。
 // 無音から直接この経路へ入ることはできない。
+// iPad第9世代：弱いSの持続中にSafari側でさらに音量が落ちても
+// Sらしい高域形状が続く限り保持しやすくする。
 const IOS_S_LOW_VOLUME_MIN =
-    0.00045;
+    0.00018;
 
 const IOS_S_LOW_NOISE_MULTIPLIER =
-    1.08;
+    0.75;
 
 const IOS_S_LOW_NOISE_ADD =
-    0.000035;
+    0.000000;
 
 const IOS_S_LOW_HIGH_RATIO_MIN =
     0.70;
