@@ -5437,6 +5437,48 @@ function weakS(
 
 
 // ============================================================
+// Android 「ふー」らしい息の除外
+// ============================================================
+//
+// V14のS開始感度そのものは変えない。
+// 「ふー」はSより高域の集中が弱く、スペクトル重心や
+// 6kHz/8kHz以上の成分が少ない場合が多いため、
+// 明確に息寄りの形だけをS開始候補から外す。
+
+function androidClearlyBreathy(
+    result
+) {
+
+    const clearBreath =
+        result.spectralCentroid <= 4300
+        &&
+        result.upperHighRatio <= 0.20
+        &&
+        result.veryHighRatio <= 0.08;
+
+
+    const lowHighBreath =
+        result.spectralCentroid <= 5000
+        &&
+        result.lowMidRatio >= 0.24
+        &&
+        result.upperHighRatio <= 0.24
+        &&
+        result.veryHighRatio <= 0.10
+        &&
+        result.highRatio <= 0.60;
+
+
+    return (
+        clearBreath
+        ||
+        lowHighBreath
+    );
+
+}
+
+
+// ============================================================
 // Android 弱いS開始
 // ============================================================
 
@@ -7086,7 +7128,15 @@ function processResult(
                 result
             )
             &&
-            iosShapeOK;
+            iosShapeOK
+            &&
+            (
+                !IS_ANDROID
+                ||
+                !androidClearlyBreathy(
+                    result
+                )
+            );
 
 
         const weakCandidate =
@@ -7102,7 +7152,15 @@ function processResult(
                 )
             )
             &&
-            iosShapeOK;
+            iosShapeOK
+            &&
+            (
+                !IS_ANDROID
+                ||
+                !androidClearlyBreathy(
+                    result
+                )
+            );
 
 
         if (
