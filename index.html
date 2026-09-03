@@ -1276,14 +1276,16 @@ const IS_IOS =
 // Android
 // ============================================================
 
+// Android：開始後の弱いSを保持しやすくする。
 const ANDROID_HOLD_HIGH_RATIO_MIN =
-    0.30;
+    0.28;
 
 const ANDROID_HOLD_ZCR_MIN =
-    0.018;
+    0.015;
 
+// 瞬間的に条件を外れても画像がすぐ消えないよう少し延長。
 const ANDROID_RELEASE_SECONDS =
-    0.28;
+    0.45;
 
 
 // ============================================================
@@ -5747,9 +5749,9 @@ function holdSAndroid(
 
     const minimumVolume =
         Math.max(
-            WEAK_MIN_VOLUME * 0.70,
-            noiseFloor * 1.20,
-            noiseFloor + 0.0005
+            0.0016,
+            noiseFloor * 1.12,
+            noiseFloor + 0.00025
         );
 
 
