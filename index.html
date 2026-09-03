@@ -679,42 +679,6 @@ button {
     }
 }
 
-
-/* iPad第9世代 S判定診断パネル */
-.s-debug-panel {
-    width: min(100%, 650px);
-    margin: 10px auto 16px;
-    padding: 12px 14px;
-    background: #ffffff;
-    border: 1px solid #aaa;
-    border-radius: 10px;
-    text-align: left;
-    font-family: -apple-system, BlinkMacSystemFont, "Yu Gothic", sans-serif;
-    font-size: 14px;
-    line-height: 1.55;
-}
-.s-debug-title {
-    font-size: 16px;
-    font-weight: 700;
-    margin-bottom: 6px;
-}
-.s-debug-summary {
-    font-size: 15px;
-    font-weight: 700;
-    margin-bottom: 7px;
-}
-.s-debug-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 3px 12px;
-}
-.s-debug-ok { color: #137333; font-weight: 700; }
-.s-debug-ng { color: #b3261e; font-weight: 700; }
-.s-debug-small { margin-top: 7px; color: #555; font-size: 12px; }
-@media (max-width: 600px) {
-    .s-debug-grid { grid-template-columns: 1fr; }
-}
-
 </style>
 
 </head>
@@ -751,17 +715,6 @@ button {
 
 
 <div id="status"></div>
-
-<div id="sDebugPanel" class="s-debug-panel">
-    <div class="s-debug-title">S音 判定診断（試験用）</div>
-    <div id="sDebugSummary" class="s-debug-summary">スタート後に「すーーーー」を出してください。</div>
-    <div id="sDebugValues" class="s-debug-grid"></div>
-    <div class="s-debug-small">
-        ○＝現在の本番S判定条件を満たす　×＝その条件で止まっています。<br>
-        この表示は診断だけで、S音の判定値そのものは変更していません。
-    </div>
-</div>
-
 
 
 <div class="image-box">
@@ -1357,8 +1310,11 @@ const PC_ONSET_EXTRA_FRAMES =
 // iPad / iPhone
 // ============================================================
 
+// iPad第9世代 S開始感度テスト。
+// 通常のS音量しきい値は変えず、iOSの弱音経路だけ開始音量を下げる。
+// 実際の開始時に 0.0008～0.0009 前後しか届かないケースに対応。
 const IOS_WEAK_MIN_VOLUME =
-    0.0028;
+    0.0008;
 
 const IOS_WEAK_REQUIRED =
     12;
@@ -1441,6 +1397,43 @@ const IOS_SPECTRAL_RELEASE_SECONDS =
 
 const IOS_INITIAL_PROTECTION_SECONDS =
     0.30;
+
+
+// ============================================================
+// iPad / iPhone 低音量S追跡（試験版）
+// ============================================================
+//
+// 第9世代では「すー」の開始直後は十分な音量がある一方、
+// 継続中にSafariへ届く音量だけが大きく下がることがある。
+// そのため、最初に通常のS判定を満たしたことを確認した後だけ、
+// 非常にSらしい高域形状が続く間は低音量でも候補・継続を許可する。
+// 無音から直接この経路へ入ることはできない。
+const IOS_S_LOW_VOLUME_MIN =
+    0.00045;
+
+const IOS_S_LOW_NOISE_MULTIPLIER =
+    1.08;
+
+const IOS_S_LOW_NOISE_ADD =
+    0.000035;
+
+const IOS_S_LOW_HIGH_RATIO_MIN =
+    0.70;
+
+const IOS_S_LOW_CENTROID_MIN =
+    6500;
+
+const IOS_S_LOW_UPPER_HIGH_MIN =
+    0.35;
+
+const IOS_S_LOW_ZCR_MIN =
+    0.080;
+
+const IOS_S_LOW_VERY_HIGH_MIN =
+    0.18;
+
+const IOS_S_SEED_REQUIRED =
+    2;
 
 
 // ============================================================
@@ -4379,6 +4372,15 @@ let iosWeakCount =
     0;
 
 
+// iOS低音量S追跡。
+// 最初に通常のS音量を満たしたフレームが連続してからだけ有効にする。
+let iosSSeedCount =
+    0;
+
+let iosSSeeded =
+    false;
+
+
 let iosBreathCount =
     0;
 
@@ -4492,6 +4494,14 @@ function resetRecognitionState(
 
     iosWeakCount =
         0;
+
+
+    iosSSeedCount =
+        0;
+
+
+    iosSSeeded =
+        false;
 
 
     iosBreathCount =
@@ -5874,6 +5884,126 @@ function pcClearlySilent(
 // iPad継続
 // ============================================================
 
+
+// ============================================================
+// iPad / iPhone 低音量S追跡
+// ============================================================
+
+function iosLowVolumeSContinuation(
+    result
+) {
+
+    const minimumVolume =
+        Math.max(
+            IOS_S_LOW_VOLUME_MIN,
+            noiseFloor * IOS_S_LOW_NOISE_MULTIPLIER,
+            noiseFloor + IOS_S_LOW_NOISE_ADD
+        );
+
+
+    if (
+        result.volume
+        <
+        minimumVolume
+    ) {
+
+        return false;
+
+    }
+
+
+    // 音量をかなり低く許す代わりに、
+    // 周波数形状は通常の開始判定よりも厳しく「Sらしさ」を確認する。
+    if (
+        result.highRatio
+        <
+        IOS_S_LOW_HIGH_RATIO_MIN
+    ) {
+
+        return false;
+
+    }
+
+
+    if (
+        result.spectralCentroid
+        <
+        IOS_S_LOW_CENTROID_MIN
+    ) {
+
+        return false;
+
+    }
+
+
+    if (
+        result.upperHighRatio
+        <
+        IOS_S_LOW_UPPER_HIGH_MIN
+    ) {
+
+        return false;
+
+    }
+
+
+    if (
+        result.zcr
+        <
+        IOS_S_LOW_ZCR_MIN
+    ) {
+
+        return false;
+
+    }
+
+
+    if (
+        result.veryHighRatio
+        <
+        IOS_S_LOW_VERY_HIGH_MIN
+    ) {
+
+        return false;
+
+    }
+
+
+    const peakRatio =
+        result.volume > 0
+        ?
+        result.peak / result.volume
+        :
+        999;
+
+
+    if (
+        peakRatio
+        >
+        PEAK_RATIO_LIMIT
+    ) {
+
+        return false;
+
+    }
+
+
+    if (
+        result.peak
+        >
+        PEAK_LIMIT
+    ) {
+
+        return false;
+
+    }
+
+
+    return true;
+
+}
+
+
 function holdSIOS(
     result
 ) {
@@ -5892,7 +6022,9 @@ function holdSIOS(
         minimumVolume
     ) {
 
-        return false;
+        return iosLowVolumeSContinuation(
+            result
+        );
 
     }
 
@@ -6638,6 +6770,14 @@ function latchS(
         0;
 
 
+    iosSSeedCount =
+        0;
+
+
+    iosSSeeded =
+        false;
+
+
     iosBreathCount =
         0;
 
@@ -6675,142 +6815,9 @@ function latchS(
 // 音声判定
 // ============================================================
 
-
-// ============================================================
-// iPad第9世代 S判定診断（試験用）
-// 本番判定は変更せず、どの条件で落ちているかだけ表示する。
-// ============================================================
-function updateSDebug(result) {
-
-    const panel = document.getElementById("sDebugPanel");
-    const summary = document.getElementById("sDebugSummary");
-    const values = document.getElementById("sDebugValues");
-
-    if (!panel || !summary || !values) {
-        return;
-    }
-
-    if (practiceMode !== "s") {
-        summary.textContent = "「すーっと！」モードに切り替えてください。";
-        values.innerHTML = "";
-        return;
-    }
-
-    const peakRatio =
-        result.volume > 0
-        ? result.peak / result.volume
-        : 999;
-
-    const upperToLowMid =
-        result.upperHighRatio
-        /
-        Math.max(result.lowMidRatio, 0.001);
-
-    const upperShareOfHigh =
-        result.upperHighRatio
-        /
-        Math.max(result.highRatio, 0.001);
-
-    const veryHighToMid =
-        result.veryHighRatio
-        /
-        Math.max(result.mid24Ratio, 0.001);
-
-    const veryHighShareOfHigh =
-        result.veryHighRatio
-        /
-        Math.max(result.highRatio, 0.001);
-
-    const checks = [
-        ["Volume", result.volume >= iosWeakDynamicMin,
-            result.volume.toFixed(6) + "  / 必要 " + iosWeakDynamicMin.toFixed(6)],
-
-        ["High Ratio ≥3kHz", result.highRatio >= IOS_S_SHAPE_HIGH_RATIO_MIN,
-            result.highRatio.toFixed(3) + "  / 必要 " + IOS_S_SHAPE_HIGH_RATIO_MIN.toFixed(2)],
-
-        ["Centroid", result.spectralCentroid >= IOS_S_SHAPE_CENTROID_MIN,
-            Math.round(result.spectralCentroid) + " Hz / 必要 " + IOS_S_SHAPE_CENTROID_MIN + " Hz"],
-
-        ["Upper High ≥6kHz", result.upperHighRatio >= IOS_S_SHAPE_UPPER_HIGH_MIN,
-            result.upperHighRatio.toFixed(3) + "  / 必要 " + IOS_S_SHAPE_UPPER_HIGH_MIN.toFixed(2)],
-
-        ["Upper / LowMid", upperToLowMid >= IOS_S_SHAPE_UPPER_TO_LOWMID_MIN,
-            upperToLowMid.toFixed(2) + "  / 必要 " + IOS_S_SHAPE_UPPER_TO_LOWMID_MIN.toFixed(2)],
-
-        ["ZCR", result.zcr >= IOS_S_SHAPE_ZCR_MIN,
-            result.zcr.toFixed(3) + "  / 必要 " + IOS_S_SHAPE_ZCR_MIN.toFixed(3)],
-
-        ["Upper / High", upperShareOfHigh >= IOS_S_SHAPE_UPPER_SHARE_MIN,
-            upperShareOfHigh.toFixed(2) + "  / 必要 " + IOS_S_SHAPE_UPPER_SHARE_MIN.toFixed(2)],
-
-        ["Very High ≥8kHz", result.veryHighRatio >= IOS_S_SHAPE_VERY_HIGH_MIN,
-            result.veryHighRatio.toFixed(3) + "  / 必要 " + IOS_S_SHAPE_VERY_HIGH_MIN.toFixed(2)],
-
-        ["VeryHigh / Mid2-4k", veryHighToMid >= IOS_S_SHAPE_VERY_HIGH_TO_MID_MIN,
-            veryHighToMid.toFixed(2) + "  / 必要 " + IOS_S_SHAPE_VERY_HIGH_TO_MID_MIN.toFixed(2)],
-
-        ["VeryHigh / High", veryHighShareOfHigh >= IOS_S_SHAPE_VERY_HIGH_SHARE_MIN,
-            veryHighShareOfHigh.toFixed(2) + "  / 必要 " + IOS_S_SHAPE_VERY_HIGH_SHARE_MIN.toFixed(2)],
-
-        ["共通HighRatio", result.highRatio >= HIGH_RATIO_MIN,
-            result.highRatio.toFixed(3) + "  / 必要 " + HIGH_RATIO_MIN.toFixed(2)],
-
-        ["共通ZCR", result.zcr >= ZCR_MIN,
-            result.zcr.toFixed(3) + "  / 必要 " + ZCR_MIN.toFixed(3)],
-
-        ["Peak / Volume", peakRatio <= PEAK_RATIO_LIMIT,
-            peakRatio.toFixed(2) + "  / 上限 " + PEAK_RATIO_LIMIT.toFixed(1)],
-
-        ["Peak", result.peak <= PEAK_LIMIT,
-            result.peak.toFixed(6) + "  / 上限 " + PEAK_LIMIT.toFixed(3)]
-    ];
-
-    const failed = checks.filter(item => !item[1]);
-
-    // iosClearlyBreathy がtrueでも開始候補が連続してリセットされるため明示。
-    const breathy = iosClearlyBreathy(result);
-    if (breathy) {
-        failed.push(["「ふー」除外", false, "S候補がリセットされる状態"]);
-    }
-
-    if (calibrating) {
-        summary.textContent = "キャリブレーション中です。少し待ってください。";
-    }
-    else if (failed.length === 0) {
-        summary.innerHTML =
-            '<span class="s-debug-ok">現在フレーム：全条件 ○</span>'
-            + "　※開始には約12フレーム連続が必要";
-    }
-    else {
-        summary.innerHTML =
-            '<span class="s-debug-ng">現在止めている条件：'
-            + failed.map(item => item[0]).join(" / ")
-            + "</span>";
-    }
-
-    values.innerHTML =
-        checks.map(item => {
-            const cls = item[1] ? "s-debug-ok" : "s-debug-ng";
-            const mark = item[1] ? "○" : "×";
-            return '<div class="' + cls + '">' + mark + ' ' + item[0] + '</div>'
-                 + '<div>' + item[2] + '</div>';
-        }).join("")
-        +
-        '<div class="' + (breathy ? "s-debug-ng" : "s-debug-ok") + '">'
-        + (breathy ? "×" : "○") + ' 「ふー」除外'
-        + '</div><div>'
-        + (breathy ? "除外判定あり" : "除外判定なし")
-        + '</div>';
-}
-
-
 function processResult(
     result
 ) {
-
-    updateSDebug(
-        result
-    );
 
     if (
         calibrating
@@ -6958,6 +6965,14 @@ function processResult(
                 iosWeakCount =
                     0;
 
+
+                iosSSeedCount =
+                    0;
+
+
+                iosSSeeded =
+                    false;
+
                 return;
 
             }
@@ -7036,12 +7051,46 @@ function processResult(
             IS_IOS
         ) {
 
-            if (
+            const fullVolumeIOSCandidate =
                 weakSIOS(
+                    result
+                );
+
+
+            if (
+                fullVolumeIOSCandidate
+            ) {
+
+                iosSSeedCount++;
+
+
+                if (
+                    iosSSeedCount
+                    >=
+                    IOS_S_SEED_REQUIRED
+                ) {
+
+                    iosSSeeded =
+                        true;
+
+                }
+
+
+                iosWeakCount++;
+
+            }
+
+            else if (
+                iosSSeeded
+                &&
+                iosLowVolumeSContinuation(
                     result
                 )
             ) {
 
+                // 一度、通常の音量でSだと確認できた後は、
+                // 第9世代で音量だけが減衰しても、
+                // 強いS形状が続いていれば候補カウントを切らさない。
                 iosWeakCount++;
 
             }
@@ -7051,6 +7100,14 @@ function processResult(
                 iosWeakCount =
                     0;
 
+
+                iosSSeedCount =
+                    0;
+
+
+                iosSSeeded =
+                    false;
+
             }
 
         }
@@ -7059,6 +7116,14 @@ function processResult(
 
             iosWeakCount =
                 0;
+
+
+            iosSSeedCount =
+                0;
+
+
+            iosSSeeded =
+                false;
 
         }
 
@@ -7222,10 +7287,18 @@ function processResult(
             iosReleaseVolumeThreshold();
 
 
+        const lowVolumeSStillPresent =
+            iosLowVolumeSContinuation(
+                result
+            );
+
+
         if (
             result.volume
             <
             releaseVolume
+            &&
+            !lowVolumeSStillPresent
         ) {
 
             silenceCount++;
