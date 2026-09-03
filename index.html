@@ -5450,29 +5450,54 @@ function androidClearlyBreathy(
 ) {
 
     const clearBreath =
-        result.spectralCentroid <= 4300
-        &&
-        result.upperHighRatio <= 0.20
-        &&
-        result.veryHighRatio <= 0.08;
-
-
-    const lowHighBreath =
-        result.spectralCentroid <= 5000
-        &&
-        result.lowMidRatio >= 0.24
+        result.spectralCentroid <= 4700
         &&
         result.upperHighRatio <= 0.24
         &&
-        result.veryHighRatio <= 0.10
+        result.veryHighRatio <= 0.11;
+
+
+    const lowHighBreath =
+        result.spectralCentroid <= 5500
         &&
-        result.highRatio <= 0.60;
+        result.lowMidRatio >= 0.20
+        &&
+        result.upperHighRatio <= 0.28
+        &&
+        result.veryHighRatio <= 0.13
+        &&
+        result.highRatio <= 0.66;
+
+
+    // 中くらい以上の「ふー」は音量が上がると、
+    // genericなS判定のHigh Ratioを超えることがある。
+    // その場合でも8kHz以上への集中が弱く、
+    // 2〜4kHz帯が比較的多い形なら息として除外する。
+    const strongBreath =
+        result.spectralCentroid <= 5900
+        &&
+        result.mid24Ratio >= 0.15
+        &&
+        result.veryHighRatio <= 0.14
+        &&
+        (
+            result.veryHighRatio
+            /
+            Math.max(
+                result.mid24Ratio,
+                0.001
+            )
+        )
+        <
+        0.80;
 
 
     return (
         clearBreath
         ||
         lowHighBreath
+        ||
+        strongBreath
     );
 
 }
