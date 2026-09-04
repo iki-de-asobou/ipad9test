@@ -9,7 +9,7 @@
     content="width=device-width, initial-scale=1, viewport-fit=cover"
 >
 
-<title>すーっと！ はつおん（第9世代ふー持続テストV2）</title>
+<title>すーっと！ はつおん</title>
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -219,7 +219,6 @@ button {
     display: inline-block;
 }
 
-#practiceModeButton,
 #displayModeButton,
 #imageOrderButton {
     line-height: 1.4;
@@ -638,7 +637,6 @@ button {
     }
 
     .start-control,
-    #practiceModeButton,
     #displayModeButton,
     #imageOrderButton {
         grid-column: 1 / -1;
@@ -773,10 +771,6 @@ button {
 
 <button id="imageOrderButton">
 表示順：ランダム
-</button>
-
-<button id="practiceModeButton">
-練習モード：すーっと！
 </button>
 
 <button id="vowelButton">
@@ -1093,26 +1087,18 @@ const MAX_WORD_IMAGES = 20;
 // 練習モード
 // ============================================================
 
+// 現在は「すーっと！」モードのみ。
+// 以前「ふーっと！」を選んでいた端末でも、必ずSモードで開始する。
 const PRACTICE_MODE_STORAGE_KEY =
     "IkiDeAsobouPracticeMode";
 
-
 let practiceMode =
-    localStorage.getItem(
-        PRACTICE_MODE_STORAGE_KEY
-    );
+    "s";
 
-
-if (
-    practiceMode !== "s"
-    &&
-    practiceMode !== "breath"
-) {
-
-    practiceMode =
-        "s";
-
-}
+localStorage.setItem(
+    PRACTICE_MODE_STORAGE_KEY,
+    practiceMode
+);
 
 
 // ============================================================
@@ -1657,12 +1643,6 @@ const recognitionStatus =
     );
 
 
-const practiceModeButton =
-    document.getElementById(
-        "practiceModeButton"
-    );
-
-
 const displayModeButton =
     document.getElementById(
         "displayModeButton"
@@ -1754,81 +1734,12 @@ const deleteSelectedImagesButton =
 
 
 // ============================================================
-// 練習モード
-// ============================================================
-
-function updatePracticeModeButton() {
-
-    if (
-        practiceMode === "s"
-    ) {
-
-        practiceModeButton.textContent =
-            "練習モード：すーっと！";
-
-    }
-
-    else {
-
-        practiceModeButton.textContent =
-            "練習モード：ふーっと！";
-
-    }
-
-}
-
-
-practiceModeButton.addEventListener(
-    "click",
-    function() {
-
-        if (
-            practiceMode === "s"
-        ) {
-
-            practiceMode =
-                "breath";
-
-        }
-
-        else {
-
-            practiceMode =
-                "s";
-
-        }
-
-
-        localStorage.setItem(
-            PRACTICE_MODE_STORAGE_KEY,
-            practiceMode
-        );
-
-
-        // モード切替時は前の発音状態を持ち越さない。
-        resetRecognitionState(
-            true
-        );
-
-
-        updatePracticeModeButton();
-        updateDisplayModeButton();
-
-    }
-);
-
-
-// ============================================================
 // 表示モード
 // ============================================================
 
 function updateDisplayModeButton() {
 
     const targetName =
-        practiceMode === "breath"
-        ?
-        "息"
-        :
         "s音";
 
 
@@ -7157,22 +7068,6 @@ function processResult(
     }
 
 
-    // 「ふーっと！」は、従来のS判定とは完全に別系統で処理する。
-    // これにより「すーっと！」の感度・端末別調整値を変更しない。
-    if (
-        practiceMode === "breath"
-    ) {
-
-        processBreathResult(
-            result
-        );
-
-
-        return;
-
-    }
-
-
     // ========================================================
     // S未検出
     // ========================================================
@@ -8953,8 +8848,7 @@ async function initialize() {
 
     try {
 
-        updatePracticeModeButton();
-
+        
 
         updateDisplayModeButton();
 
