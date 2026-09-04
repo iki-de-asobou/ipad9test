@@ -1372,6 +1372,12 @@ const IOS_WEAK_REQUIRED =
 const IOS_NORMAL_REQUIRED =
     12;
 
+// iPad + USB-C外部マイク専用。
+// 実測では弱いSでも High Ratio / Centroid / ZCR が十分Sらしいため、
+// S形状条件は維持したまま「開始までの待ち時間」だけ短くする。
+const IOS_USB_S_REQUIRED =
+    4;
+
 
 // iPad / iPhone の「ふー」除外。
 // 「ふー」を後から除外するだけでなく、S開始時に
@@ -4417,6 +4423,12 @@ let iosWeakDynamicMin =
     IOS_WEAK_MIN_VOLUME;
 
 
+// iPad / iPhone で USB-C 等の外部入力を使っているか。
+// 世代判定ではなく、実際の入力トラック名で判定する。
+let iosExternalUSBMic =
+    false;
+
+
 let normalCount =
     0;
 
@@ -7447,7 +7459,13 @@ function processResult(
             (
                 IS_IOS
                 ?
-                IOS_NORMAL_REQUIRED
+                (
+                    iosExternalUSBMic
+                    ?
+                    IOS_USB_S_REQUIRED
+                    :
+                    IOS_NORMAL_REQUIRED
+                )
                 :
                 NORMAL_REQUIRED
             );
@@ -7459,7 +7477,13 @@ function processResult(
             (
                 IS_IOS
                 ?
-                IOS_WEAK_REQUIRED
+                (
+                    iosExternalUSBMic
+                    ?
+                    IOS_USB_S_REQUIRED
+                    :
+                    IOS_WEAK_REQUIRED
+                )
                 :
                 (
                     IS_ANDROID
@@ -7476,7 +7500,13 @@ function processResult(
             &&
             iosWeakCount
             >=
-            IOS_WEAK_REQUIRED;
+            (
+                iosExternalUSBMic
+                ?
+                IOS_USB_S_REQUIRED
+                :
+                IOS_WEAK_REQUIRED
+            );
 
 
         if (
@@ -8476,6 +8506,54 @@ async function startMicrophone() {
 
                     }
                 );
+
+
+        // iPad第8・9世代の内蔵マイク設定には影響させず、
+        // USB-C外部マイクのときだけ専用の開始フレーム数を使う。
+        iosExternalUSBMic =
+            false;
+
+
+        if (
+            IS_IOS
+        ) {
+
+            try {
+
+                const audioTracks =
+                    mediaStream.getAudioTracks();
+
+
+                const inputLabel =
+                    (
+                        audioTracks.length > 0
+                        ?
+                        audioTracks[0].label
+                        :
+                        ""
+                    )
+                    .toLowerCase();
+
+
+                iosExternalUSBMic =
+                    (
+                        inputLabel.includes("usb")
+                        ||
+                        inputLabel.includes("external")
+                        ||
+                        inputLabel.includes("input adapter")
+                    );
+
+            }
+
+            catch (error) {
+
+                iosExternalUSBMic =
+                    false;
+
+            }
+
+        }
 
 
         const AudioContextClass =
