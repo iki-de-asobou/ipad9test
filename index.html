@@ -1376,7 +1376,18 @@ const IOS_NORMAL_REQUIRED =
 // 実測では弱いSでも High Ratio / Centroid / ZCR が十分Sらしいため、
 // S形状条件は維持したまま「開始までの待ち時間」だけ短くする。
 const IOS_USB_S_REQUIRED =
-    4;
+    2;
+
+// iPad + USB-C外部マイク専用の弱いS開始音量。
+// 実測：無音 約0.0018、弱めS 約0.020。
+// その中間に十分な余裕を持たせ、0.010から拾う。
+// 内蔵マイク用の iosWeakDynamicMin は変更しない。
+// 厳しいS形状条件も同時に満たした場合だけ開始候補になる。
+const IOS_USB_WEAK_MIN_VOLUME =
+    0.010;
+
+const IOS_USB_WEAK_NOISE_MULTIPLIER =
+    1.00;
 
 
 // iPad / iPhone の「ふー」除外。
@@ -5864,10 +5875,23 @@ function weakSIOS(
     result
 ) {
 
+    const minimumVolume =
+        iosExternalUSBMic
+        ?
+        Math.max(
+            IOS_USB_WEAK_MIN_VOLUME,
+            noiseFloor
+            *
+            IOS_USB_WEAK_NOISE_MULTIPLIER
+        )
+        :
+        iosWeakDynamicMin;
+
+
     if (
         result.volume
         <
-        iosWeakDynamicMin
+        minimumVolume
     ) {
 
         return false;
