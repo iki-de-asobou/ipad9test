@@ -1280,6 +1280,11 @@ const ANDROID_WEAK_NOISE_MULTIPLIER =
 const ANDROID_WEAK_NOISE_ADD =
     0.00015;
 
+// Android騒音対策：noiseFloor追従で開始閾値が上がりすぎないよう上限を設ける。
+// Sらしさの周波数条件・ふー除外は従来どおり維持する。
+const ANDROID_WEAK_NOISE_CAP =
+    0.0035;
+
 const ANDROID_WEAK_REQUIRED =
     3;
 
@@ -1293,6 +1298,10 @@ const ANDROID_HOLD_NOISE_MULTIPLIER =
 
 const ANDROID_HOLD_NOISE_ADD =
     0.00012;
+
+// Android騒音対策：開始後の保持閾値にも上限を設ける。
+const ANDROID_HOLD_NOISE_CAP =
+    0.0025;
 
 const ANDROID_HOLD_HIGH_RATIO_MIN =
     0.25;
@@ -5531,11 +5540,20 @@ function weakSAndroid(
     result
 ) {
 
+    const noiseBasedMinimum =
+        Math.max(
+            noiseFloor * ANDROID_WEAK_NOISE_MULTIPLIER,
+            noiseFloor + ANDROID_WEAK_NOISE_ADD
+        );
+
+
     const minimumVolume =
         Math.max(
             ANDROID_WEAK_MIN_VOLUME,
-            noiseFloor * ANDROID_WEAK_NOISE_MULTIPLIER,
-            noiseFloor + ANDROID_WEAK_NOISE_ADD
+            Math.min(
+                noiseBasedMinimum,
+                ANDROID_WEAK_NOISE_CAP
+            )
         );
 
 
@@ -5938,11 +5956,20 @@ function holdSAndroid(
     result
 ) {
 
+    const noiseBasedMinimum =
+        Math.max(
+            noiseFloor * ANDROID_HOLD_NOISE_MULTIPLIER,
+            noiseFloor + ANDROID_HOLD_NOISE_ADD
+        );
+
+
     const minimumVolume =
         Math.max(
             ANDROID_HOLD_MIN_VOLUME,
-            noiseFloor * ANDROID_HOLD_NOISE_MULTIPLIER,
-            noiseFloor + ANDROID_HOLD_NOISE_ADD
+            Math.min(
+                noiseBasedMinimum,
+                ANDROID_HOLD_NOISE_CAP
+            )
         );
 
 
