@@ -10,6 +10,7 @@
 >
 
 <title>すーっと！ はつおん</title>
+<!-- Android EC OFF + AGC OFF S判定試験版 -->
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1280,11 +1281,6 @@ const ANDROID_WEAK_NOISE_MULTIPLIER =
 const ANDROID_WEAK_NOISE_ADD =
     0.00015;
 
-// Android騒音対策：noiseFloor追従で開始閾値が上がりすぎないよう上限を設ける。
-// Sらしさの周波数条件・ふー除外は従来どおり維持する。
-const ANDROID_WEAK_NOISE_CAP =
-    0.0035;
-
 const ANDROID_WEAK_REQUIRED =
     3;
 
@@ -1298,10 +1294,6 @@ const ANDROID_HOLD_NOISE_MULTIPLIER =
 
 const ANDROID_HOLD_NOISE_ADD =
     0.00012;
-
-// Android騒音対策：開始後の保持閾値にも上限を設ける。
-const ANDROID_HOLD_NOISE_CAP =
-    0.0025;
 
 const ANDROID_HOLD_HIGH_RATIO_MIN =
     0.25;
@@ -5540,20 +5532,11 @@ function weakSAndroid(
     result
 ) {
 
-    const noiseBasedMinimum =
-        Math.max(
-            noiseFloor * ANDROID_WEAK_NOISE_MULTIPLIER,
-            noiseFloor + ANDROID_WEAK_NOISE_ADD
-        );
-
-
     const minimumVolume =
         Math.max(
             ANDROID_WEAK_MIN_VOLUME,
-            Math.min(
-                noiseBasedMinimum,
-                ANDROID_WEAK_NOISE_CAP
-            )
+            noiseFloor * ANDROID_WEAK_NOISE_MULTIPLIER,
+            noiseFloor + ANDROID_WEAK_NOISE_ADD
         );
 
 
@@ -5573,6 +5556,93 @@ function weakSAndroid(
         result
     );
 
+}
+
+
+// ============================================================
+// Android EC OFF 試験版：S開始
+// ============================================================
+// EC OFFでは無音時にも高域ノイズが出る端末があるため、
+// 音量だけでは開始させない。
+// 今回の実測（無音 / 弱いS / 普通S / リップノイズ）をもとに、
+// High Ratio・ZCR・高域形状を組み合わせ、Peak/Volumeで瞬間音を除外する。
+function androidECOffSCandidate(
+    result
+) {
+
+    const peakRatio =
+        result.volume > 0
+        ?
+        result.peak / result.volume
+        :
+        999;
+
+    const upperToLowMid =
+        result.upperHighRatio
+        /
+        Math.max(
+            result.lowMidRatio,
+            0.001
+        );
+
+    // 弱いSを残しつつ、今回の無音高域ノイズを開始させにくくする。
+    if (
+        result.volume < 0.00120
+    ) {
+        return false;
+    }
+
+    if (
+        result.highRatio < 0.70
+    ) {
+        return false;
+    }
+
+    if (
+        result.zcr < 0.16
+    ) {
+        return false;
+    }
+
+    if (
+        result.spectralCentroid < 6500
+    ) {
+        return false;
+    }
+
+    if (
+        result.upperHighRatio < 0.35
+    ) {
+        return false;
+    }
+
+    if (
+        upperToLowMid < 2.0
+    ) {
+        return false;
+    }
+
+    if (
+        peakRatio > PEAK_RATIO_LIMIT
+    ) {
+        return false;
+    }
+
+    if (
+        result.peak > PEAK_LIMIT
+    ) {
+        return false;
+    }
+
+    if (
+        androidClearlyBreathy(
+            result
+        )
+    ) {
+        return false;
+    }
+
+    return true;
 }
 
 
@@ -5956,99 +6026,74 @@ function holdSAndroid(
     result
 ) {
 
-    const noiseBasedMinimum =
+    const peakRatio =
+        result.volume > 0
+        ?
+        result.peak / result.volume
+        :
+        999;
+
+    const upperToLowMid =
+        result.upperHighRatio
+        /
         Math.max(
-            noiseFloor * ANDROID_HOLD_NOISE_MULTIPLIER,
-            noiseFloor + ANDROID_HOLD_NOISE_ADD
+            result.lowMidRatio,
+            0.001
         );
 
-
-    const minimumVolume =
-        Math.max(
-            ANDROID_HOLD_MIN_VOLUME,
-            Math.min(
-                noiseBasedMinimum,
-                ANDROID_HOLD_NOISE_CAP
-            )
-        );
-
-
+    // 開始後は開始条件より緩くする。
+    // EC OFFで持続Sそのものが残る利点を活かし、多少の音量低下や揺れを許容する。
     if (
-        result.volume
-        <
-        minimumVolume
+        result.volume < 0.00065
     ) {
-
         return false;
-
     }
 
-
     if (
-        result.highRatio
-        <
-        ANDROID_HOLD_HIGH_RATIO_MIN
+        result.highRatio < 0.50
     ) {
-
         return false;
-
     }
 
-
     if (
-        result.zcr
-        <
-        ANDROID_HOLD_ZCR_MIN
+        result.zcr < 0.08
     ) {
-
         return false;
-
     }
 
+    if (
+        result.upperHighRatio < 0.25
+    ) {
+        return false;
+    }
 
-    // ラッチ後に「ふー」へ移行した場合も、
-    // そのままSとして保持し続けない。
+    if (
+        upperToLowMid < 1.30
+    ) {
+        return false;
+    }
+
     if (
         androidClearlyBreathy(
             result
         )
     ) {
-
         return false;
-
     }
-
-
-    const peakRatio =
-        result.volume > 0
-        ?
-        result.peak
-        /
-        result.volume
-        :
-        999;
-
 
     if (
         peakRatio > 6.0
     ) {
-
         return false;
-
     }
-
 
     if (
         result.peak > 0.11
     ) {
-
         return false;
-
     }
 
-
     return true;
-
 }
 
 
@@ -7156,6 +7201,37 @@ function processResult(
 
             return;
 
+        }
+
+
+        // Android EC OFF 試験版は、genericな開始判定とは分ける。
+        // 3フレーム連続でSらしいときだけ開始し、無音ちらつきやリップノイズを抑える。
+        if (
+            IS_ANDROID
+        ) {
+
+            if (
+                androidECOffSCandidate(
+                    result
+                )
+            ) {
+                weakCount++;
+            }
+            else {
+                weakCount = 0;
+            }
+
+            normalCount = 0;
+
+            if (
+                weakCount >= 3
+            ) {
+                latchS(
+                    result
+                );
+            }
+
+            return;
         }
 
 
@@ -8298,6 +8374,34 @@ function createAudioConstraints() {
 
         supported =
             {};
+
+    }
+
+
+    if (
+        IS_ANDROID
+    ) {
+
+        // Android試験版：持続Sが端末側で0まで抑圧される現象を避けるため、
+        // Echo Cancellation と Auto Gain Control だけを無効化する。
+        // Noise Suppression は端末既定のままにする。
+        if (
+            supported.echoCancellation
+        ) {
+
+            constraints.echoCancellation =
+                false;
+
+        }
+
+        if (
+            supported.autoGainControl
+        ) {
+
+            constraints.autoGainControl =
+                false;
+
+        }
 
     }
 
