@@ -10,7 +10,6 @@
 >
 
 <title>すーっと！ はつおん</title>
-<!-- Android EC OFF + AGC OFF S判定試験版 -->
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -223,6 +222,78 @@ button {
 #displayModeButton,
 #imageOrderButton {
     line-height: 1.4;
+}
+
+
+/* =========================================================
+   Android S判定 診断パネル
+========================================================= */
+
+.android-diagnostic {
+    display: none;
+    position: fixed;
+    left: 8px;
+    right: 8px;
+    bottom: 8px;
+    z-index: 99999;
+    max-height: 58vh;
+    overflow-y: auto;
+    padding: 10px 12px;
+    background: rgba(255, 255, 255, 0.97);
+    border: 2px solid #777;
+    border-radius: 8px;
+    box-sizing: border-box;
+    text-align: left;
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+.android-diagnostic.show {
+    display: block;
+}
+
+.android-diagnostic-title {
+    margin-bottom: 7px;
+    font-size: 15px;
+    font-weight: 700;
+}
+
+.android-diagnostic-grid {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    gap: 3px 10px;
+    align-items: baseline;
+}
+
+.android-diagnostic-head {
+    font-weight: 700;
+    border-bottom: 1px solid #ccc;
+    margin-bottom: 2px;
+}
+
+.android-diagnostic-ok {
+    font-weight: 700;
+}
+
+.android-diagnostic-ng {
+    font-weight: 700;
+}
+
+.android-diagnostic-summary {
+    margin-top: 8px;
+    padding-top: 7px;
+    border-top: 1px solid #ccc;
+    font-weight: 700;
+}
+
+.android-diagnostic-history {
+    margin-top: 8px;
+    padding-top: 7px;
+    border-top: 1px solid #ccc;
+    font-family: monospace;
+    white-space: pre-wrap;
+    font-size: 11px;
+    line-height: 1.35;
 }
 
 
@@ -731,6 +802,32 @@ button {
     class="count"
 >
 登録画像：0 / 20
+</div>
+
+
+<div
+    id="androidDiagnostic"
+    class="android-diagnostic"
+    aria-live="polite"
+>
+    <div class="android-diagnostic-title">
+        Android S判定 診断
+    </div>
+
+    <div
+        id="androidDiagnosticGrid"
+        class="android-diagnostic-grid"
+    ></div>
+
+    <div
+        id="androidDiagnosticSummary"
+        class="android-diagnostic-summary"
+    ></div>
+
+    <div
+        id="androidDiagnosticHistory"
+        class="android-diagnostic-history"
+    ></div>
 </div>
 
 </div>
@@ -1281,6 +1378,11 @@ const ANDROID_WEAK_NOISE_MULTIPLIER =
 const ANDROID_WEAK_NOISE_ADD =
     0.00015;
 
+// Android騒音対策：noiseFloor追従で開始閾値が上がりすぎないよう上限を設ける。
+// Sらしさの周波数条件・ふー除外は従来どおり維持する。
+const ANDROID_WEAK_NOISE_CAP =
+    0.0035;
+
 const ANDROID_WEAK_REQUIRED =
     3;
 
@@ -1295,14 +1397,43 @@ const ANDROID_HOLD_NOISE_MULTIPLIER =
 const ANDROID_HOLD_NOISE_ADD =
     0.00012;
 
+// Android騒音対策：開始後の保持閾値にも上限を設ける。
+const ANDROID_HOLD_NOISE_CAP =
+    0.0025;
+
 const ANDROID_HOLD_HIGH_RATIO_MIN =
     0.25;
 
 const ANDROID_HOLD_ZCR_MIN =
     0.012;
 
+
+// ============================================================
+// Android：弱いS / 端末側で減衰したSの救済ルート
+// ============================================================
+// 通常のS判定は変更せず、Androidだけ別ルートを追加する。
+// 騒音だけの状態では ZCR・High Ratio・UpperHigh が低かったため、
+// 低音量を許す代わりに複数のSらしい条件を同時に要求する。
+const ANDROID_RESCUE_MIN_VOLUME =
+    0.00025;
+
+const ANDROID_RESCUE_HIGH_RATIO_MIN =
+    0.28;
+
+const ANDROID_RESCUE_ZCR_MIN =
+    0.025;
+
+const ANDROID_RESCUE_UPPER_HIGH_MIN =
+    0.19;
+
+const ANDROID_RESCUE_VERY_HIGH_MIN =
+    0.060;
+
+const ANDROID_RESCUE_UPPER_TO_LOWMID_MIN =
+    1.20;
+
 // Sらしい音が一時的に崩れた場合は少し待つ。
-// EC OFF版では「消えるのが遅い」感覚を減らすため、0.45秒に短縮する。
+// Android本番候補では、終了の遅さを減らすため0.45秒にする。
 const ANDROID_RELEASE_SECONDS =
     0.45;
 
@@ -1667,6 +1798,34 @@ const mainCount =
     document.getElementById(
         "mainCount"
     );
+
+
+const androidDiagnostic =
+    document.getElementById(
+        "androidDiagnostic"
+    );
+
+const androidDiagnosticGrid =
+    document.getElementById(
+        "androidDiagnosticGrid"
+    );
+
+const androidDiagnosticSummary =
+    document.getElementById(
+        "androidDiagnosticSummary"
+    );
+
+
+const androidDiagnosticHistory =
+    document.getElementById(
+        "androidDiagnosticHistory"
+    );
+
+let androidDiagnosticHistoryLines =
+    [];
+
+let androidDiagnosticLastSnapshotTime =
+    0;
 
 
 const mainFileInput =
@@ -5263,6 +5422,482 @@ function analyzeFrame(
 }
 
 
+
+// ============================================================
+// Android S判定 診断表示
+// ============================================================
+
+function diagnosticMark(ok) {
+
+    return ok
+        ? "○"
+        : "×";
+
+}
+
+
+function diagnosticClass(ok) {
+
+    return ok
+        ? "android-diagnostic-ok"
+        : "android-diagnostic-ng";
+
+}
+
+
+function updateAndroidDiagnostic(
+    result
+) {
+
+    if (
+        !IS_ANDROID
+        ||
+        !androidDiagnostic
+    ) {
+
+        return;
+
+    }
+
+
+    androidDiagnostic.classList.add(
+        "show"
+    );
+
+
+    const peakRatio =
+        result.volume > 0
+        ?
+        result.peak / result.volume
+        :
+        999;
+
+
+    const upperShareOfHigh =
+        result.upperHighRatio
+        /
+        Math.max(
+            result.highRatio,
+            0.001
+        );
+
+
+    const veryHighShareOfHigh =
+        result.veryHighRatio
+        /
+        Math.max(
+            result.highRatio,
+            0.001
+        );
+
+
+    const upperToLowMid =
+        result.upperHighRatio
+        /
+        Math.max(
+            result.lowMidRatio,
+            0.001
+        );
+
+
+    const veryHighToMid =
+        result.veryHighRatio
+        /
+        Math.max(
+            result.mid24Ratio,
+            0.001
+        );
+
+
+    const onsetNoiseBasedMinimum =
+        Math.max(
+            noiseFloor * ANDROID_WEAK_NOISE_MULTIPLIER,
+            noiseFloor + ANDROID_WEAK_NOISE_ADD
+        );
+
+
+    const onsetMinimum =
+        Math.max(
+            ANDROID_WEAK_MIN_VOLUME,
+            Math.min(
+                onsetNoiseBasedMinimum,
+                ANDROID_WEAK_NOISE_CAP
+            )
+        );
+
+
+    const holdNoiseBasedMinimum =
+        Math.max(
+            noiseFloor * ANDROID_HOLD_NOISE_MULTIPLIER,
+            noiseFloor + ANDROID_HOLD_NOISE_ADD
+        );
+
+
+    const holdMinimum =
+        Math.max(
+            ANDROID_HOLD_MIN_VOLUME,
+            Math.min(
+                holdNoiseBasedMinimum,
+                ANDROID_HOLD_NOISE_CAP
+            )
+        );
+
+
+    const breathy =
+        androidClearlyBreathy(
+            result
+        );
+
+
+    const shape =
+        androidSShape(
+            result
+        );
+
+
+    const common =
+        commonSFeatures(
+            result
+        );
+
+
+    const rescue =
+        androidRescueS(
+            result
+        );
+
+
+    const rescueUpperToLowMid =
+        result.upperHighRatio
+        /
+        Math.max(
+            result.lowMidRatio,
+            0.001
+        );
+
+
+    const onsetChecks = [
+        ["音量", result.volume, onsetMinimum, result.volume >= onsetMinimum, 6],
+        ["High Ratio", result.highRatio, HIGH_RATIO_MIN, result.highRatio >= HIGH_RATIO_MIN, 3],
+        ["ZCR", result.zcr, ZCR_MIN, result.zcr >= ZCR_MIN, 3],
+        ["Peak/Volume", peakRatio, PEAK_RATIO_LIMIT, peakRatio <= PEAK_RATIO_LIMIT, 2],
+        ["Peak", result.peak, PEAK_LIMIT, result.peak <= PEAK_LIMIT, 4],
+        ["Centroid", result.spectralCentroid, 4800, result.spectralCentroid >= 4800, 0],
+        ["UpperHigh", result.upperHighRatio, 0.19, result.upperHighRatio >= 0.19, 3],
+        ["VeryHigh", result.veryHighRatio, 0.060, result.veryHighRatio >= 0.060, 3],
+        ["Upper/High", upperShareOfHigh, 0.33, upperShareOfHigh >= 0.33, 3],
+        ["VeryHigh/High", veryHighShareOfHigh, 0.105, veryHighShareOfHigh >= 0.105, 3],
+        ["Upper/LowMid", upperToLowMid, 0.82, upperToLowMid >= 0.82, 2],
+        ["VeryHigh/Mid24", veryHighToMid, 0.38, veryHighToMid >= 0.38, 2]
+    ];
+
+
+    const holdChecks = [
+        ["保持 音量", result.volume, holdMinimum, result.volume >= holdMinimum, 6],
+        ["保持 High Ratio", result.highRatio, ANDROID_HOLD_HIGH_RATIO_MIN, result.highRatio >= ANDROID_HOLD_HIGH_RATIO_MIN, 3],
+        ["保持 ZCR", result.zcr, ANDROID_HOLD_ZCR_MIN, result.zcr >= ANDROID_HOLD_ZCR_MIN, 3]
+    ];
+
+
+    const rescueChecks = [
+        ["救済 音量", result.volume, ANDROID_RESCUE_MIN_VOLUME, result.volume >= ANDROID_RESCUE_MIN_VOLUME, 6],
+        ["救済 High Ratio", result.highRatio, ANDROID_RESCUE_HIGH_RATIO_MIN, result.highRatio >= ANDROID_RESCUE_HIGH_RATIO_MIN, 3],
+        ["救済 ZCR", result.zcr, ANDROID_RESCUE_ZCR_MIN, result.zcr >= ANDROID_RESCUE_ZCR_MIN, 3],
+        ["救済 UpperHigh", result.upperHighRatio, ANDROID_RESCUE_UPPER_HIGH_MIN, result.upperHighRatio >= ANDROID_RESCUE_UPPER_HIGH_MIN, 3],
+        ["救済 VeryHigh", result.veryHighRatio, ANDROID_RESCUE_VERY_HIGH_MIN, result.veryHighRatio >= ANDROID_RESCUE_VERY_HIGH_MIN, 3],
+        ["救済 Upper/LowMid", rescueUpperToLowMid, ANDROID_RESCUE_UPPER_TO_LOWMID_MIN, rescueUpperToLowMid >= ANDROID_RESCUE_UPPER_TO_LOWMID_MIN, 2]
+    ];
+
+
+    // 診断中は、S判定の前後にかかわらず全項目を表示する。
+    // 保持中も周波数形状の変化を比較できるようにする。
+    const rows =
+        onsetChecks.concat(
+            holdChecks,
+            rescueChecks
+        );
+
+
+    androidDiagnosticGrid.replaceChildren();
+
+
+    const headers =
+        ["項目", "現在値 / 基準", "判定"];
+
+
+    headers.forEach(
+        function(label) {
+
+            const cell =
+                document.createElement(
+                    "div"
+                );
+
+            cell.textContent =
+                label;
+
+            cell.className =
+                "android-diagnostic-head";
+
+            androidDiagnosticGrid.appendChild(
+                cell
+            );
+
+        }
+    );
+
+
+    rows.forEach(
+        function(row) {
+
+            const [
+                name,
+                value,
+                threshold,
+                ok,
+                digits
+            ] = row;
+
+
+            const nameCell =
+                document.createElement(
+                    "div"
+                );
+
+            nameCell.textContent =
+                name;
+
+
+            const valueCell =
+                document.createElement(
+                    "div"
+                );
+
+            valueCell.textContent =
+                Number(value).toFixed(digits)
+                +
+                " / "
+                +
+                Number(threshold).toFixed(digits);
+
+
+            const markCell =
+                document.createElement(
+                    "div"
+                );
+
+            markCell.textContent =
+                diagnosticMark(
+                    ok
+                );
+
+            markCell.className =
+                diagnosticClass(
+                    ok
+                );
+
+
+            androidDiagnosticGrid.append(
+                nameCell,
+                valueCell,
+                markCell
+            );
+
+        }
+    );
+
+
+    const modeText =
+        soundLatched
+        ?
+        "持続中"
+        :
+        "開始待ち";
+
+
+    const onsetOK =
+        (
+            result.volume >= onsetMinimum
+            &&
+            common
+            &&
+            !breathy
+            &&
+            shape
+        );
+
+
+    const holdOK =
+        holdSAndroid(
+            result
+        );
+
+
+    androidDiagnosticSummary.textContent =
+        "状態："
+        +
+        modeText
+        +
+        "　noiseFloor="
+        +
+        noiseFloor.toFixed(6)
+        +
+        "　S形状="
+        +
+        diagnosticMark(shape)
+        +
+        "　ふー除外="
+        +
+        (breathy ? "×（息判定）" : "○")
+        +
+        "　開始総合="
+        +
+        diagnosticMark(onsetOK)
+        +
+        "　持続総合="
+        +
+        diagnosticMark(holdOK)
+        +
+        "　救済="
+        +
+        diagnosticMark(rescue);
+
+
+    // Sが成立して画像が表示されても、直前～成立中の判定を確認できるよう
+    // 約0.25秒ごとに直近8件を固定パネル内へ残す。
+    const now =
+        performance.now();
+
+
+    if (
+        now
+        -
+        androidDiagnosticLastSnapshotTime
+        >=
+        250
+    ) {
+
+        androidDiagnosticLastSnapshotTime =
+            now;
+
+
+        const failedNames =
+            rows
+            .filter(
+                function(row) {
+                    return !row[3];
+                }
+            )
+            .map(
+                function(row) {
+                    return row[0];
+                }
+            );
+
+
+        const historyLine =
+            modeText
+            +
+            " V="
+            +
+            result.volume.toFixed(5)
+            +
+            " HR="
+            +
+            result.highRatio.toFixed(3)
+            +
+            " ZCR="
+            +
+            result.zcr.toFixed(3)
+            +
+            " C="
+            +
+            Math.round(
+                result.spectralCentroid
+            )
+            +
+            " UH="
+            +
+            result.upperHighRatio.toFixed(3)
+            +
+            " VH="
+            +
+            result.veryHighRatio.toFixed(3)
+            +
+            " UH/HR="
+            +
+            upperShareOfHigh.toFixed(3)
+            +
+            " VH/HR="
+            +
+            veryHighShareOfHigh.toFixed(3)
+            +
+            " UH/LM="
+            +
+            upperToLowMid.toFixed(2)
+            +
+            " VH/M24="
+            +
+            veryHighToMid.toFixed(2)
+            +
+            " Shape="
+            +
+            diagnosticMark(shape)
+            +
+            " Breath="
+            +
+            (breathy ? "×" : "○")
+            +
+            " Start="
+            +
+            diagnosticMark(onsetOK)
+            +
+            " Hold="
+            +
+            diagnosticMark(holdOK)
+            +
+            " Rescue="
+            +
+            diagnosticMark(rescue)
+            +
+            (
+                failedNames.length > 0
+                ?
+                " ×:"
+                +
+                failedNames.join(",")
+                :
+                " 全項目○"
+            );
+
+
+        androidDiagnosticHistoryLines.push(
+            historyLine
+        );
+
+
+        if (
+            androidDiagnosticHistoryLines.length
+            >
+            8
+        ) {
+
+            androidDiagnosticHistoryLines.shift();
+
+        }
+
+
+        androidDiagnosticHistory.textContent =
+            "直近の判定履歴（古い→新しい）\n"
+            +
+            androidDiagnosticHistoryLines.join(
+                "\n"
+            );
+
+    }
+
+}
+
 // ============================================================
 // S共通特徴
 // ============================================================
@@ -5525,6 +6160,107 @@ function androidSShape(
 }
 
 
+
+// ============================================================
+// Android 弱いS / 減衰S 救済
+// ============================================================
+
+function androidRescueS(
+    result
+) {
+
+    if (
+        result.volume
+        <
+        ANDROID_RESCUE_MIN_VOLUME
+    ) {
+
+        return false;
+
+    }
+
+
+    if (
+        result.highRatio
+        <
+        ANDROID_RESCUE_HIGH_RATIO_MIN
+    ) {
+
+        return false;
+
+    }
+
+
+    if (
+        result.zcr
+        <
+        ANDROID_RESCUE_ZCR_MIN
+    ) {
+
+        return false;
+
+    }
+
+
+    if (
+        result.upperHighRatio
+        <
+        ANDROID_RESCUE_UPPER_HIGH_MIN
+    ) {
+
+        return false;
+
+    }
+
+
+    if (
+        result.veryHighRatio
+        <
+        ANDROID_RESCUE_VERY_HIGH_MIN
+    ) {
+
+        return false;
+
+    }
+
+
+    const upperToLowMid =
+        result.upperHighRatio
+        /
+        Math.max(
+            result.lowMidRatio,
+            0.001
+        );
+
+
+    if (
+        upperToLowMid
+        <
+        ANDROID_RESCUE_UPPER_TO_LOWMID_MIN
+    ) {
+
+        return false;
+
+    }
+
+
+    // 既存の「ふー」除外はそのまま使う。
+    if (
+        androidClearlyBreathy(
+            result
+        )
+    ) {
+
+        return false;
+
+    }
+
+
+    return true;
+
+}
+
+
 // ============================================================
 // Android 弱いS開始
 // ============================================================
@@ -5533,11 +6269,20 @@ function weakSAndroid(
     result
 ) {
 
+    const noiseBasedMinimum =
+        Math.max(
+            noiseFloor * ANDROID_WEAK_NOISE_MULTIPLIER,
+            noiseFloor + ANDROID_WEAK_NOISE_ADD
+        );
+
+
     const minimumVolume =
         Math.max(
             ANDROID_WEAK_MIN_VOLUME,
-            noiseFloor * ANDROID_WEAK_NOISE_MULTIPLIER,
-            noiseFloor + ANDROID_WEAK_NOISE_ADD
+            Math.min(
+                noiseBasedMinimum,
+                ANDROID_WEAK_NOISE_CAP
+            )
         );
 
 
@@ -5557,93 +6302,6 @@ function weakSAndroid(
         result
     );
 
-}
-
-
-// ============================================================
-// Android EC OFF 試験版：S開始
-// ============================================================
-// EC OFFでは無音時にも高域ノイズが出る端末があるため、
-// 音量だけでは開始させない。
-// 今回の実測（無音 / 弱いS / 普通S / リップノイズ）をもとに、
-// High Ratio・ZCR・高域形状を組み合わせ、Peak/Volumeで瞬間音を除外する。
-function androidECOffSCandidate(
-    result
-) {
-
-    const peakRatio =
-        result.volume > 0
-        ?
-        result.peak / result.volume
-        :
-        999;
-
-    const upperToLowMid =
-        result.upperHighRatio
-        /
-        Math.max(
-            result.lowMidRatio,
-            0.001
-        );
-
-    // 弱いSを残しつつ、今回の無音高域ノイズを開始させにくくする。
-    if (
-        result.volume < 0.00120
-    ) {
-        return false;
-    }
-
-    if (
-        result.highRatio < 0.70
-    ) {
-        return false;
-    }
-
-    if (
-        result.zcr < 0.18
-    ) {
-        return false;
-    }
-
-    if (
-        result.spectralCentroid < 7000
-    ) {
-        return false;
-    }
-
-    if (
-        result.upperHighRatio < 0.35
-    ) {
-        return false;
-    }
-
-    if (
-        upperToLowMid < 2.0
-    ) {
-        return false;
-    }
-
-    if (
-        peakRatio > PEAK_RATIO_LIMIT
-    ) {
-        return false;
-    }
-
-    if (
-        result.peak > PEAK_LIMIT
-    ) {
-        return false;
-    }
-
-    if (
-        androidClearlyBreathy(
-            result
-        )
-    ) {
-        return false;
-    }
-
-    return true;
 }
 
 
@@ -6027,74 +6685,99 @@ function holdSAndroid(
     result
 ) {
 
-    const peakRatio =
-        result.volume > 0
-        ?
-        result.peak / result.volume
-        :
-        999;
-
-    const upperToLowMid =
-        result.upperHighRatio
-        /
+    const noiseBasedMinimum =
         Math.max(
-            result.lowMidRatio,
-            0.001
+            noiseFloor * ANDROID_HOLD_NOISE_MULTIPLIER,
+            noiseFloor + ANDROID_HOLD_NOISE_ADD
         );
 
-    // 開始後は開始条件より緩くする。
-    // EC OFFで持続Sそのものが残る利点を活かし、多少の音量低下や揺れを許容する。
-    if (
-        result.volume < 0.00065
-    ) {
-        return false;
-    }
+
+    const minimumVolume =
+        Math.max(
+            ANDROID_HOLD_MIN_VOLUME,
+            Math.min(
+                noiseBasedMinimum,
+                ANDROID_HOLD_NOISE_CAP
+            )
+        );
+
 
     if (
-        result.highRatio < 0.50
+        result.volume
+        <
+        minimumVolume
     ) {
+
         return false;
+
     }
+
 
     if (
-        result.zcr < 0.08
+        result.highRatio
+        <
+        ANDROID_HOLD_HIGH_RATIO_MIN
     ) {
+
         return false;
+
     }
+
 
     if (
-        result.upperHighRatio < 0.25
+        result.zcr
+        <
+        ANDROID_HOLD_ZCR_MIN
     ) {
+
         return false;
+
     }
 
-    if (
-        upperToLowMid < 1.30
-    ) {
-        return false;
-    }
 
+    // ラッチ後に「ふー」へ移行した場合も、
+    // そのままSとして保持し続けない。
     if (
         androidClearlyBreathy(
             result
         )
     ) {
+
         return false;
+
     }
+
+
+    const peakRatio =
+        result.volume > 0
+        ?
+        result.peak
+        /
+        result.volume
+        :
+        999;
+
 
     if (
         peakRatio > 6.0
     ) {
+
         return false;
+
     }
+
 
     if (
         result.peak > 0.11
     ) {
+
         return false;
+
     }
 
+
     return true;
+
 }
 
 
@@ -7205,37 +7888,6 @@ function processResult(
         }
 
 
-        // Android EC OFF 試験版は、genericな開始判定とは分ける。
-        // 3フレーム連続でSらしいときだけ開始し、無音ちらつきやリップノイズを抑える。
-        if (
-            IS_ANDROID
-        ) {
-
-            if (
-                androidECOffSCandidate(
-                    result
-                )
-            ) {
-                weakCount++;
-            }
-            else {
-                weakCount = 0;
-            }
-
-            normalCount = 0;
-
-            if (
-                weakCount >= 3
-            ) {
-                latchS(
-                    result
-                );
-            }
-
-            return;
-        }
-
-
         // iPad / iPhone では、明確な「ふー」系の息が
         // 2フレーム続いた場合だけ候補カウントを破棄する。
         // 1フレームだけの揺れでは止めないため、
@@ -7334,24 +7986,14 @@ function processResult(
 
 
         const weakCandidate =
+            IS_ANDROID
+            ?
             (
-                IS_ANDROID
-                ?
-                weakSAndroid(
-                    result
-                )
-                :
-                weakS(
-                    result
-                )
-            )
-            &&
-            iosShapeOK
-            &&
-            (
-                !IS_ANDROID
-                ||
                 (
+                    weakSAndroid(
+                        result
+                    )
+                    &&
                     !androidClearlyBreathy(
                         result
                     )
@@ -7360,6 +8002,18 @@ function processResult(
                         result
                     )
                 )
+                ||
+                androidRescueS(
+                    result
+                )
+            )
+            :
+            (
+                weakS(
+                    result
+                )
+                &&
+                iosShapeOK
             );
 
 
@@ -7581,6 +8235,10 @@ function processResult(
 
         if (
             holdSAndroid(
+                result
+            )
+            ||
+            androidRescueS(
                 result
             )
         ) {
@@ -7895,6 +8553,11 @@ function addSamples(
             analyzeFrame(
                 frame
             );
+
+
+        updateAndroidDiagnostic(
+            result
+        );
 
 
         processResult(
@@ -8380,34 +9043,6 @@ function createAudioConstraints() {
 
 
     if (
-        IS_ANDROID
-    ) {
-
-        // Android試験版：持続Sが端末側で0まで抑圧される現象を避けるため、
-        // Echo Cancellation と Auto Gain Control だけを無効化する。
-        // Noise Suppression は端末既定のままにする。
-        if (
-            supported.echoCancellation
-        ) {
-
-            constraints.echoCancellation =
-                false;
-
-        }
-
-        if (
-            supported.autoGainControl
-        ) {
-
-            constraints.autoGainControl =
-                false;
-
-        }
-
-    }
-
-
-    if (
         IS_IOS
     ) {
 
@@ -8449,6 +9084,20 @@ function createAudioConstraints() {
                 1;
 
         }
+
+    }
+
+
+    // Androidは EchoCancellation / NoiseSuppression を既定のまま残し、
+    // Sの持続改善が見られた AutoGainControl だけOFFにする。
+    if (
+        IS_ANDROID
+        &&
+        supported.autoGainControl
+    ) {
+
+        constraints.autoGainControl =
+            false;
 
     }
 
