@@ -1301,9 +1301,10 @@ const ANDROID_HOLD_HIGH_RATIO_MIN =
 const ANDROID_HOLD_ZCR_MIN =
     0.012;
 
-// Sらしい音が一時的に崩れた場合は、従来どおり少し長めに待つ。
+// Sらしい音が一時的に崩れた場合は少し待つ。
+// EC OFF版では「消えるのが遅い」感覚を減らすため、0.45秒に短縮する。
 const ANDROID_RELEASE_SECONDS =
-    0.60;
+    0.45;
 
 // ほぼ無音まで落ちた場合だけ、より早く画像を消す。
 const ANDROID_SILENCE_RELEASE_SECONDS =
@@ -5599,13 +5600,13 @@ function androidECOffSCandidate(
     }
 
     if (
-        result.zcr < 0.16
+        result.zcr < 0.18
     ) {
         return false;
     }
 
     if (
-        result.spectralCentroid < 6500
+        result.spectralCentroid < 7000
     ) {
         return false;
     }
