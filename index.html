@@ -5758,7 +5758,7 @@ function updateAndroidDiagnostic(
         +
         diagnosticMark(holdOK)
         +
-        "　救済="
+        "　救済(持続用)="
         +
         diagnosticMark(rescue);
 
@@ -6164,6 +6164,8 @@ function androidSShape(
 // ============================================================
 // Android 弱いS / 減衰S 救済
 // ============================================================
+// この救済ルートは開始判定には使わず、S成立後の持続専用にする。
+// 衣擦れ等が救済条件だけで新規開始するのを防ぐ。
 
 function androidRescueS(
     result
@@ -7989,21 +7991,15 @@ function processResult(
             IS_ANDROID
             ?
             (
-                (
-                    weakSAndroid(
-                        result
-                    )
-                    &&
-                    !androidClearlyBreathy(
-                        result
-                    )
-                    &&
-                    androidSShape(
-                        result
-                    )
+                weakSAndroid(
+                    result
                 )
-                ||
-                androidRescueS(
+                &&
+                !androidClearlyBreathy(
+                    result
+                )
+                &&
+                androidSShape(
                     result
                 )
             )
